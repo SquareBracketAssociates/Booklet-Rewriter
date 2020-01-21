@@ -1,33 +1,41 @@
 !Checking and Transforming Programs with Rewrite Engine
 
 
-Manipulating programs automatically is a really powerful tool. A refactoring tool is a typical example. Another example is a rule checking engine such as the one presented in Chapter XXX. 
-In this Chapter we present the underlying engine, named ParseTreeRewriter on top of which the 
-Pharo refactoring browser and Critics browser are built. The ParseTreeRewriter has been developed by J. Brant and D. Roberts.
+Manipulating programs automatically is a really powerful tool. 
+A refactoring tool is a typical example. 
+Another example is a rule checking engine. 
 
-This powerful engine allows you to define abstract expressions to match and transform code. The engine is based on an abstract syntax tree unification algorithm that matches meta-variable to abstract syntax tree nodes and let you manipulate such meta-variables. 
-In this chapter, we will first present the notion of abstract syntax tree, then the syntax of the parse tree rewriter expressions with practical examples. We also present Flamel an advanced editor to help user to express matching expressions. 
+In this book, we present the engine named ParseTreeRewriter on top of which the 
+Pharo refactoring engine and quality rule logic are built.
+The ParseTreeRewriter has been originally developed by J. Brant and D. Roberts.
 
-Authors: 
-- Gisela Decuzzi
-- Stéphane Ducasse
-- Camille Teruel
-- Anne Etien
-- Jean-Christophe Bach
+This powerful engine allows you to define abstract expressions to match and transform code. 
+The engine is based on an abstract syntax tree kind of unification algorithm that matches meta-variable to abstract syntax tree nodes and let you manipulate such meta-variables. 
+We said that this is a kind of unification because it is not fully true. 
+
+In this book, we will first present the notion of abstract syntax tree, then the syntax of the parse tree rewriter expressions with practical examples.
+
+We thanks for the following persons for their participation to this booklet from close or far:
+Gisela Decuzzi, Camille Teruel, John Brant, Lukas Renggli, Anne Etien, and Jean-Christophe Bach.
 
 % http://pharorwrules.wordpress.com/2013/08/06/just-want-to-match/
 
 
 
-!!Basic Knowledge on AST and other concepts
+!! 101 on AST and related sconcepts
 
-An abstract syntax tree (AST in short) is a data structure that is semantically
-equivalent to some source code. While source code is just a string of
-characters, an AST is a tree whose nodes correspond to the syntactic constructs
-of the parsed language. In Pharo, an AST node can represent a method, a
-message, a variable, a block, an assignment, etc. Such a tree is much easier
-to process than a plain string. That is why this data structure is used by most
-tools that have to deal with code.
+An Abstract Syntax Tree (AST) is a tree data structure that represents source code as a tree of nodes.
+While source code is just a string of characters, an AST is a tree whose nodes correspond to the syntactic constructs
+of the parsed language.
+In Pharo, an AST node can represent a method, a
+message, a variable, a block, an assignment, etc.
+
+""Terminology point."" Pharo ASTs are more concrete syntax trees in the sense that they keep information about the syntactic characters such 
+as parentheses, square bracket and pipe for temporaries definitions. We call them AST in the following, but now you know that we are not fully correct. 
+
+
+Such a tree is much easier to process than a plain string. 
+That is why this data structure is used by most tools that have to deal with code.
 
 Let's met our first AST. Consider the following method. 
 
@@ -50,20 +58,20 @@ The root of the AST is a method node whose child is a return node. This return n
 +An inspector on an AST >file://figures/ASTInspector.pdf|width=50|label=astinspector+
 
 
-Sending the message body ==body== to the ast returns the body of the method (as shown in Figure *astinspector* and ==selector== the method selector. 
+Sending the message body ==body== to the AST returns the body of the method (as shown in Figure *@astinspector* and ==selector== the method selector. 
 
 [[[
 (Point >> #<) ast body 
 ]]]
 
-For example the AST of the following method is displayed in Figure *methodnode*.
+For example the AST of the following method is displayed in Figure *@methodnode*.
 
 [[[
 selector: arg1 and: arg2
-		  | temp1 temp2 |
-		  temp1 := OrderedCollection new.
-		  temp2 := arg1, arg2.
-		  ^ temp1 + temp2
+	| temp1 temp2 |
+	temp1 := OrderedCollection new.
+	temp2 := arg1, arg2.
+	^ temp1 + temp2
 ]]]
 
 +The AST of the method ==selector:and:== >file://figures/methodnode.png|width=50|label=methodnode+
@@ -71,11 +79,14 @@ selector: arg1 and: arg2
 
 !!!Basic Knowledge on ProgramNode and its Subclasses
 
-Different kinds of nodes correspond to different classes. These classes form a hierarchy whose root is ==RBProgramNode==. This class implements several useful methods such as: ==parent==, ==nodesDo:==, ==isVariable==.... Browse it and its subclasses to discover the structure and the capabilities of Pharo ASTs. 
+Different kinds of nodes correspond to different classes. 
+These classes form a hierarchy whose root is ==RBProgramNode==. 
+This class implements several useful methods such as: ==parent==, ==nodesDo:==, ==isVariable==.... 
+Browse it and its subclasses to discover the structure and the capabilities of Pharo ASTs. 
 There is a visitor class that supports the walking through ASTs.
 
-Here is a view on the ProgramNode hierarchy showing the classes and their instance variables. 
-(Camille: showing instance variables is maybe not good since it is subject to change in the near future)
+Here is a view on the ProgramNode hierarchy  showing the classes and their instance variables. Of course, showing instance variables may be subject  to change in the future. 
+We show them to provide an overview.
 
 [[[
 RBProgramNode #('parent' 'comments' 'properties')
@@ -93,7 +104,6 @@ RBProgramNode #('parent' 'comments' 'properties')
 			RBLiteralArrayNode ('isByteArray' 'stop' 'contents' 'start')
 			RBLiteralValueNode ('token')
 		RBMessageNode ('receiver' 'selector' 'selectorParts' 'arguments')
-			RBPatternMessageNode ('isList' 'isCascadeList')
 		RBVariableNode ('token')
 			RBArgumentNode 
 			RBClassReference 
@@ -103,14 +113,18 @@ RBProgramNode #('parent' 'comments' 'properties')
 			RBThisContextNode 
 ]]]
 
-Note that its name can be misleading but ==RBPatternMessageNode== is for a method with a signature and a body.
 
-!!Unification
+
+!!! Kind of Unification
 The pattern matching algorithm in the engine rewriter is accomplished by a unification algorithm. This algorithm takes as input a pattern (that describes what we look for) and a tree (that could or not match the pattern). A pattern is a tree containing special nodes called meta-variables. A meta-variable is a variable whose value will be set by the unification algorithm. For example, a meta-variable can be used to match a variable while another can be used to match messages.
 
 The output of the algorithm is either false (there is no match found) or true. If it is true, that means that at least one match has been found. A match is a mapping from meta-variable to AST nodes of the input tree. These mappings correspond to the values the meta-variables of the pattern should take for the pattern to be equal to the input tree. 
 
 Let's look at a few examples. If X and Y denote meta-variables, the pattern ==self X== matches ==self open== with the mapping: X -> 'open'. The pattern ==X Y== matches ==self open== with the mapping: Y -> 'self', Y -> 'open'. As a failing example, ==X X== doesn't match ==self open== because X cannot be at the same time 'self' and 'open'.
+
+
+
+
 
 
 

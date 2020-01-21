@@ -1,0 +1,26 @@
+No, I never looked up an implementation when I created it. What we do is fairly simple, and it isn’t full unification. For simple patterns that just match a single node (e.g., `@node), then we just keep a dictionary that maps the previous match of the node. If we see it again, we make sure that two ASTs are equivalent (we don’t even check alpha equivalence). For patterns that can match multiple nodes (e.g., `.@statements), we iterate the possible matches until we find something that works. We start by trying to match it to 0 items, and continue to whatever size list we are matching against. Essentially, we use a non-greedy strategy.
+
+The reason why it isn’t full unification is that we don’t backtrack across nodes in the tree. For example, if you wanted to match an ifTrue:ifFalse: message where the statements in the block are reordered by splitting them some place in the middle, you might try to use an expression like this:
+
+	`@a ifTrue: [`.@b. `.@c] ifFalse: [`.@c. `.@b]
+
+This expression should find an expression like this:
+
+	true ifTrue: [1. 2] ifFalse: [2. 1]
+
+Here `@a = true, `.@b = {1}, & `.c = {2} is a valid unification. But the way the RB and SmaCC work, is that it only tries, `.@b = {} and `.c = {1, 2} as these are valid for the ifTrue: block. Since it doesn’t backtrack across the AST from the ifFalse: block to the ifTrue: block, we never find a match. 
+
+In practice, I’ve never needed this, and if I did I could handle it by using the programatic matching:
+
+	`@a ifTrue: [`.@Stmts] ifFalse: `{:node :dict | 
+		| statements |
+		statements := dict at: (RBPatternVariableNode named: '`.@Stmts').
+		node isBlock and: [ node body temporaries isEmpty and: [ node body statements size = statements size and: [ 
+			(1 to: statements size) anySatisfy: [ :i |
+				node body statements asArray  = ((statements allButFirst: i) , (statements first: i)) asArray
+			 	] ] ] ] }
+
+This isn’t as pretty, but it works. It is essentially part of our “Good Enough” approach to the RB.
+
+
+John Brant
