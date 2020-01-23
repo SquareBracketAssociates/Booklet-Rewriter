@@ -113,47 +113,183 @@ RBProgramNode #('parent' 'comments' 'properties')
 			RBThisContextNode 
 ]]]
 
+A SequenceNode is used by both a Block body and a MethodNode body.
 
 
-!!! Kind of Unification
-The pattern matching algorithm in the engine rewriter is accomplished by a unification algorithm. This algorithm takes as input a pattern (that describes what we look for) and a tree (that could or not match the pattern). A pattern is a tree containing special nodes called meta-variables. A meta-variable is a variable whose value will be set by the unification algorithm. For example, a meta-variable can be used to match a variable while another can be used to match messages.
+!!! About pattern matching
 
-The output of the algorithm is either false (there is no match found) or true. If it is true, that means that at least one match has been found. A match is a mapping from meta-variable to AST nodes of the input tree. These mappings correspond to the values the meta-variables of the pattern should take for the pattern to be equal to the input tree. 
+The pattern matching algorithm in the engine rewriter is the algorithm that will match a given variable to a subtree. 
+This algorithm takes as input a pattern (that describes what we look for) and a tree (that could or not match the pattern). 
+A pattern is a tree containing special nodes called meta-variables. 
+A meta-variable is a variable whose value will be set by the pattern matching algorithm. 
+For example, a meta-variable can be used to match a variable while another can be used to match messages.
 
-Let's look at a few examples. If X and Y denote meta-variables, the pattern ==self X== matches ==self open== with the mapping: X -> 'open'. The pattern ==X Y== matches ==self open== with the mapping: Y -> 'self', Y -> 'open'. As a failing example, ==X X== doesn't match ==self open== because X cannot be at the same time 'self' and 'open'.
+The output of the algorithm is either false (there is no match found) or true. 
+If it is true, that means that at least one match has been found. 
+A match is a mapping from meta-variable to AST nodes of the input tree.
+These mappings correspond to the values the meta-variables of the pattern should take for the pattern to be equal to the input tree. 
 
-
-
+Let's look at a few examples.
+If X and Y denote meta-variables, the pattern ==self X== matches ==self open== with the mapping: ==X== -> =='open'==.
+The pattern ==X Y== matches ==self open== with the mapping: ==Y== -> =='self==', ==Y== -> =='open'==.
+ As a failing example, ==X X== doesn't match ==self open== because X cannot be at the same time 'self' and 'open'.
 
 
 
 
 !! Pattern syntax
-
-The ==`== character (backquote) creates a variable to match. Several options
-can be used to specify the search: 
+The ==`== character (backquote) creates a variable to match. 
+Several options can be used to specify the search: 
 
 ||!keyword  |! Meaning
-|| @ | the searched node is optional or can be repeated
-|| . | the searched node is a statement
+|| @ | the searched node is optional or can be repeated. 
+|| | When applied to a variable, match any expression. When applied to a statement, match a list of statements. When applied to a message, match a list of arguments.
+|| . | the searched node is a statement in a sequence node.
 || # | the searched node is a literal
-|| \{ \} | to match nodes that satisfies the enclosed SmallTalk code
-|| ` | to search recursively
+|| \{ \} | to match nodes that satisfies the enclosed code
+|| ` | to search recursively: When a match is found recurse into the matched node.
+
+Let's explain each construct by using it in a concrete context:
+
+!!! Example
+
+Let us start with an example and we want to make sure that our example is always correct 
+to we will verify it using tests. 
+
+First we define a class to host 
+
+[[[
+TestCase subclass: #MMatcherTest
+	slots: { #searcher level }
+	classVariables: {  }
+	package: 'myBecher-Matcher'
+]]]
+
+The instance variable ==searcher== will refer to an instance of RBParseTreeSearcher and level is just an instance variable to illustrate that we can match different kind of nodes.
+We make sure that we want to reuse the logic as much as possible so we define
+a ==setUp== method and some helpers.
+[[[
+MMatcherTest >> setUp
+	super setUp.
+	searcher := RBParseTreeSearcher new.
+]]]	
+
+[[[
+MMatcherTest >> search
+	searcher 
+		executeTree: (MMatcherTest >> #level) ast 
+		initialAnswer: OrderedCollection new.
+]]]
+
+Then we define a simple method named ==level== taken from the PhD of L. Renggli.
+
+[[[
+level
+	| current |
+	level := 0.
+	current := self resolve.
+	[ current isRoot ] whileFalse: [
+		level := level + 1.
+		current := current parent ].
+	^ level
+]]]
+
+We are now ready to check some searches.
+
+!!!! Not using meta-variables
+
+The first question is can ask to the searcher is to find an exact node. 
+Here we look for the node (a message node) that represents the message ==current node==.
+
+[[[
+testNoVariable
+
+	searcher
+		matches: 'current isRoot'
+		do: [ :aNode :answer | answer add: aNode ; yourself].
+	self search.
+	self assert: searcher answer first class equals: RBMessageNode.
+	self assert: searcher answer first printString equals: 'RBMessageNode(current isRoot)'
+]]]
+
+For example, the pattern ==current isRoot== matches the single occurrence of the parse-tree node of current isRoot. 
+
+[[[
+testNoVariableMultipleMatches
+
+	searcher
+		matches: 'current'
+		do: [ :aNode :answer | answer add: aNode ; yourself].
+	self search.
+	self assert: searcher answer size equals: 4.
+	self assert: (searcher answer collect: [ :each | each start ]) asArray equals: #(34 62 116 127)
+]]]
+
+Looking for the nodes that matches ==current== we get four different temporary nodes each with its own source locations. It shows that the temporary definition is not part of the matches.
+
+[[[
+testNoVariableLevelMultipleMatches
+
+	searcher
+		matches: 'level'
+		do: [ :aNode :answer | answer add: aNode ; yourself].
+	self search.
+	self assert: searcher answer size equals: 4 
+]]]
+
+The previous test shows that we can match instance variables.
 
 
-{{{latex:\noindent }}}Let's explain each construct by using it in a concrete context:
+!!!! A first meta-variable
+
+The following test illustrates what will happen when we define a meta-variable matching unary messages sent to the ==current== variable.
+
+The pattern ==current `selector== all the unary message sends to the receiver ==current==. We obtain the two message nodes ==current isRoot== and ==current parent==.
+
+[[[
+testSelectorToCurrent
+
+	searcher
+		matches: 'current `selector'
+		do: [ :aNode :answer | answer add: aNode ; yourself].
+	self search.
+	self assert: searcher answer size equals: 2.
+	self 
+		assert: searcher answer printString 
+		equals: 'an OrderedCollection(RBMessageNode(current isRoot) RBMessageNode(current parent))'
+]]]
+
+
+To be able to match binary message we will indicate that we can have an optional number of argument using the expression ==`arg==. In the following we match the message node ==level + 1==.
+
+[[[
+testSelectorToLevel
+	searcher
+		matches: 'level `selector: `@arg'
+		do: [ :aNode :answer | answer add: aNode ; yourself].
+	self search.
+	self assert: searcher answer size equals: 1.
+	self 
+		assert: searcher answer printString 
+		equals: 'an OrderedCollection(RBMessageNode(level + 1))'
+]]]
+
+
+
+
 
 !!! Single variables
 
-==`== introduces the most basic meta-variable. ==`foo== only matches single
-variables.
+==`== introduces the most basic meta-variable.
+==`foo== only matches single variable.
 
-Examples: 
+!!!! Examples: 
 
 The following code enables to define a method node in which we want to find the
-pattern. An RBParseTreeSearcher enables to define a pattern containing the
-meta-variables. The resulting substitutions are gathered into the ==answer==
-variable:
+pattern. 
+An ==RBParseTreeSearcher== enables to define a pattern containing the
+meta-variables. 
+The resulting substitutions are gathered into the ==answer== variable:
 
 [[[
 | methodNode searcher |
@@ -167,9 +303,7 @@ searcher executeTree: methodNode initialAnswer: Set new.
 searcher answer.
 ]]]
 
-In the following tables, only the code corresponding to the method node is
-changed.
-
+In the following tables, only the code corresponding to the method node is changed.
 
 ==`foo bar== ""matches"" the following expressions:
 
@@ -177,8 +311,8 @@ changed.
 | x bar    || =={ foo=x }==    | ==x== is a variable
 | self bar || =={ foo=self }== | ==self== is a RBSelfNode, that is considered as a variable
 | OrderedCollection bar || =={ foo=OrderedCollection }== | ==OrderedCollection== is considered as a variable
-| x toto ; bar || =={ foo=x }== | ==x toto; bar== is a RBCascadeNode composed of two message nodes ==x toto== and ==x bar==
-| x bar. y bar    || =={ foo=x, foo=y }==    | ==x== and ==y== are variables
+| x toto ; bar || =={ foo=x }== | ==x toto; bar== is a ==RBCascadeNode== composed of two message nodes ==x toto== and ==x bar==
+| x bar. y bar    || =={ foo=x, foo=y }==    | ==x== and ==y== are variables.
 | self x bar. y bar || =={ foo=y }==  | ==y== is variable and ==self x== is not a single variable
 
 
@@ -504,6 +638,7 @@ FlamelRule new
 
 
 Now if we want to restrict the search to a subset of the environment.
+
 
 
 

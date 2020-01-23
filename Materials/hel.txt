@@ -1,0 +1,31 @@
+!! Dump
+
+Helvetia uses tree pattern matching [Kilpelinen and Mannila, 1992] as the mechanism to identify specific parse-tree nodes in host language code. This infrastructure is based on the refactoring engine [Brant et al., 1998] provided by the host language.
+
+Tree patterns are specified using host language expressions that are annotated with optional meta-characters. The back-tick marks meta-nodes that are not required to match literally but that are variable. Table 4.1 gives an overview of the supported meta-characters following the initial back-tick.
+
+# literal
+. statement Match a statement in a sequence node.
+@ list When applied to a variable, match any expression. When applied to a statement, match a list of statements. When applied to a message, match a list of arguments.
+` recurse  When a match is found recurse into the matched node.
+
+
+Listing 4.1 provides the source code of a simple method to illustrate the basic concepts of tree pattern matching. 
+For example, the pattern current isRoot matches the single occurrence of the parse-tree node of current isRoot. The pattern current `selector matches all zero argument method invocation on the receiver current. In the example, these are current isRoot and current parent.
+To match any method invocation on any object we can use the pattern `@receiver `@selector: `@argument. In our example the pattern matches self resolve and the loop with the message name whileFalse:. The inner parts of the loop are not
+
+
+
+level
+   | level current |
+   level := 0.
+   current := self resolve.
+   [ current isRoot ] whileFalse: [ level := level + 1.
+   current := current parent ].
+^ level 
+
+Listing 4.1: Example method to illustrate parse-tree matching.
+matched, because by default the search does not recurse into already matched nodes. If we add a second back-tick to a meta-variable the search continues after a match recursively into the tree. For example, the modified query ``@receiver `@selector: ``@argument additionally matches current isRoot, level + 1 and current parent.
+The pattern `#literal matches any literal node. In the example it matches the nodes of the numbers 0 and 1. The pattern `.statement matches a single statement. In the example, these are level := 0, current := self resolve, the complete loop, and ^ level. Again, the statements inside the loop are not matched, because by default the search does not recurse into already matched nodes.
+The name of the meta-variables can be used to extract sub-parts of the parse-tree nodes after a successful match. If the same name is used multiple times, the parse- tree matcher uses unification. For example, the pattern `variable := `variable `@selector: `@argument matches level := level + 1 and current := current parent, but not current := self resolve because current and self are not the same.
+
