@@ -116,6 +116,12 @@ RBProgramNode #('parent' 'comments' 'properties')
 A SequenceNode is used by both a Block body and a MethodNode body.
 
 
+
+
+
+
+
+
 !!! About pattern matching
 
 The pattern matching algorithm in the engine rewriter is the algorithm that will match a given variable to a subtree. 
@@ -133,9 +139,10 @@ Let's look at a few examples.
 If X and Y denote meta-variables, the pattern ==self X== matches ==self open== with the mapping: ==X== -> =='open'==.
 The pattern ==X Y== matches ==self open== with the mapping: ==Y== -> =='self==', ==Y== -> =='open'==.
  As a failing example, ==X X== doesn't match ==self open== because X cannot be at the same time 'self' and 'open'.
+ 
 
 
-
+ 
 
 !! Pattern syntax
 The ==`== character (backquote) creates a variable to match. 
@@ -275,7 +282,166 @@ testSelectorToLevel
 ]]]
 
 
+!! Transformation at Work
 
+!!! Examples of transformations 
+
+[[[
+| `@Temps | ``@.Statements. ``@Boolean ifTrue: [^false]. ^true
+| `@Temps | ``@.Statements. ^``@Boolean not
+``@object not ifTrue: ``@block
+``@object ifFalse: ``@block.
+]]]
+
+[[[
+RBParseTreeRewriter new
+ 	replace: '``@aDictionary at: ``@key
+ 		ifAbsent:
+ 			[| `@Temps |
+ 			``@.Statements.
+ 			``@aDictionary at: ``@key put: ``@value]' with: '``@aDictionary at: ``@key
+ 		ifAbsentPut:
+ 			[| `@Temps |
+ 			``@.Statements.
+ 			``@value]';
+	yourself
+]]]
+
+[[[
+rule := RBUnderscoreAssignmentRule new.
+environment := BrowserEnvironment new forPackageNames: #('PackageA'
+'PackageB' ...).
+SmalllintChecker runRule: rule onEnvironment: environment.
+rule open
+]]]
+
+!!! globals.
+Let's start it with an example, imagine that we want to identify all the places where we have ==anObject globals at:==.
+We want to identify message as the ones in the ==configurationClass== method below.
+
+[[[
+configurationClass
+	^ Smalltalk globals at: self configurationName asSymbol
+]]]
+
+First try to look for the senders of the message ==globals==. You will see that you get couple hundreds of them and plenty of them 
+are not sending ==at:== but ==at:ifAbsent:== or ==at:put:== or even nothing to do with ==at:==.
+
+!!!!Let's write our first matching pattern.
+First you want any object, it could be Smalltalk or another one so we use the ==`== operation to create a (meta)variable that we name ==anObject==.
+A meta variable is a variable that we will unified against the AST elements. 
+
+So we get 
+
+[[[
+`anObject
+]]]
+
+Then since we want the message ==globals== we add it and obtain.
+
+[[[
+`anObject globals
+]]]
+
+Note here that we do not annotate it with an operator because we do not want any message selector but just ==globals==.
+We redo the same for ==at:== so we obtain the following pattern.
+
+
+[[[
+`anObject globals at: 
+]]]
+But this expression is not complete and it is missing an argument to be a full Pharo expressions. So we add another meta-variable that will match anything. 
+
+[[[
+`anObject globals at: `anything
+]]]
+
+!!!!Executing the rule
+Now we have the pattern but we should execute it to get the matches. For now we will use a nice extension of the Refactoring rule engine called Flamel. 
+
+TO BE CHANGED:No more flamel
+[[[
+FlamelRule new
+   matchingExpression: '`anObject globals at: `anything';
+   matchExpression;
+   run;
+   result
+]]]
+
+
+Execute and inspect the result. It may take some minutes because it is matching all the methods of the system. 
+You get an RBParseTreeEnvironment and the results are in classSelectors and metaSelectors.
+Let us explain the script, once the rule object is created we specify the expression using ==matchingExpression:==, then we specify that we want to match an expression (and not a complete method as we will explain in Section *MatchingMethods*, then we run the rule and ask for its results. 
+
+!!!! Refining the scope
+Sometimes you do not want to look in the complete system but in a restricted environment. To do so we use the message ==scope:==
+
+
+TO BE CHANGED: no more flamel
+[[[
+FlamelRule new
+   matchingExpression: '`anObject globals at: `anything';
+   matchExpression;
+   scope: (RBPackageEnvironment packageName: 'Kernel');
+   run;
+   result
+]]]
+
+
+Now if we want to restrict the search to a subset of the environment.
+
+
+
+
+
+!!! Running your transformation
+
+
+[[[
+searchPattern
+
+	^ '`selector
+| expr source |
+expr := RBParser parseExpression:  `#input.
+configurationSelector := `#configuration.
+`@.st1.
+self assert: source equals: `#output'
+]]]
+
+[[[
+targetPattern
+
+	^ '`selector
+| source |
+configurationSelector := `#configuration.
+source := self formatExpression:  `#input.
+self assert: source equals: `#output'! !
+]]]
+
+
+[[[
+rewrite: aCompiledMethod
+	"self new rewrite"
+	| rewriter ok |
+	rewriter := RBParseTreeRewriter new.
+	rewriter replaceMethod: self searchPattern with: self targetPattern.
+	ok := rewriter executeTree: aCompiledMethod parseTree.
+	ok ifFalse: [ ^ 'did not work' ].
+	Author 
+		useAuthor: 'Refactoring'
+		during: [  
+			aCompiledMethod origin 
+				compile: rewriter tree formattedCode 
+				classified: aCompiledMethod protocol ]
+]]]
+
+
+
+
+
+!! Revisting the DSL
+
+In this chapter we describe the DSL with many examples.
 
 
 !!! Single variables
@@ -564,82 +730,6 @@ Gofer it
 
 !!! Step by Step
 
-Let's start it with an example, imagine that we want to identify all the places where we have ==anObject globals at:==.
-
-We want to identify message as the ones in the ==configurationClass== method below.
-
-[[[
-configurationClass
-	^ Smalltalk globals at: self configurationName asSymbol
-]]]
-
-First try to look for the senders of the message ==globals==. You will see that you get couple hundreds of them and plenty of them 
-are not sending ==at:== but ==at:ifAbsent:== or ==at:put:== or even nothing to do with ==at:==.
-
-!!!!Let's write our first matching pattern.
-
-First you want any object, it could be Smalltalk or another one so we use the ==`== operation to create a (meta)variable that we name ==anObject==.
-A meta variable is a variable that we will unified against the AST elements. 
-
-So we get 
-
-[[[
-`anObject
-]]]
-
-Then since we want the message ==globals== we add it and obtain.
-
-[[[
-`anObject globals
-]]]
-
-Note here that we do not annotate it with an operator because we do not want any message selector but just ==globals==.
-We redo the same for ==at:== so we obtain the following pattern.
-
-
-[[[
-`anObject globals at: 
-]]]
-But this expression is not complete and it is missing an argument to be a full Pharo expressions. So we add another meta-variable that will match anything. 
-
-[[[
-`anObject globals at: `anything
-]]]
-
-!!!!Executing the rule
-Now we have the pattern but we should execute it to get the matches. For now we will use a nice extension of the Refactoring rule engine called Flamel. 
-
-
-[[[
-FlamelRule new
-   matchingExpression: '`anObject globals at: `anything';
-   matchExpression;
-   run;
-   result
-]]]
-
-
-Execute and inspect the result. It may take some minutes because it is matching all the methods of the system. 
-You get an RBParseTreeEnvironment and the results are in classSelectors and metaSelectors.
-Let us explain the script, once the rule object is created we specify the expression using ==matchingExpression:==, then we specify that we want to match an expression (and not a complete method as we will explain in Section *MatchingMethods*, then we run the rule and ask for its results. 
-
-!!!! Refining the scope
-Sometimes you do not want to look in the complete system but in a restricted environment. To do so we use the message ==scope:==
-
-
-[[[
-FlamelRule new
-   matchingExpression: '`anObject globals at: `anything';
-   matchExpression;
-   scope: (RBPackageEnvironment packageName: 'Kernel');
-   run;
-   result
-]]]
-
-
-Now if we want to restrict the search to a subset of the environment.
-
-
 
 
 
@@ -842,7 +932,7 @@ x + y'.
 
 
 
-
+[[[
 self matcher
 matches: '``@lotOfStuffBefore globals at: ``@lotOfStuffAfter'
 do: [:theMatch :theOwner | theMatch inspect].
@@ -850,7 +940,7 @@ do: [:theMatch :theOwner | theMatch inspect].
 rule := SearchGlobalsAtUsage new.
 environment := RBClassEnvironment class: Result.
 RBSmalllintChecker runRule: rule onEnvironment: (environment)
-
+]]]
 
 
 
@@ -868,14 +958,6 @@ x + y'.
                executeTree: rbMethodNode initialAnswer: Set new.
 
 ]]]
-
-
-
-
-
-
-
-
 
 
 [[[
@@ -1068,39 +1150,5 @@ distribution de base, ce qui peut sensiblement ralentir le traitement.
 Voici quelques exemples d'
 expressions qui pourraient être avantageusement transformées :
 
-[[[
-| `@Temps | ``@.Statements. ``@Boolean ifTrue: [^false]. ^true
-| `@Temps | ``@.Statements. ^``@Boolean not
-``@object not ifTrue: ``@block
-``@object ifFalse: ``@block.
-]]]
 
-[[[
-RBParseTreeRewriter new
- 	replace: '``@aDictionary at: ``@key
- 		ifAbsent:
- 			[| `@Temps |
- 			``@.Statements.
- 			``@aDictionary at: ``@key put: ``@value]' with: '``@aDictionary at: ``@key
- 		ifAbsentPut:
- 			[| `@Temps |
- 			``@.Statements.
- 			``@value]';
-	yourself
-]]]
 
-[[[
-rule := RBUnderscoreAssignmentRule new.
-environment := BrowserEnvironment new forPackageNames: #('PackageA'
-'PackageB' ...).
-SmalllintChecker runRule: rule onEnvironment: environment.
-rule open
-]]]
-
-[[[
-ORLintBrowser
-	openRule: (RBCompositeLintRule rules: (RBCompositeLintRule
-rulesGroupedFor: RBSpellingRule) name: 'Spelling')
-	environment: (BrowserEnvironment new forPackageNames: #('Kernel'
-'Collections-Abstract'))
-]]]
