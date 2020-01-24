@@ -1,0 +1,54 @@
+Hi john
+
+
+| methodNode searcher |
+methodNode := OpalCompiler new parse: 'level
+	| current |
+	level := 0.
+	current := self resolve.
+	[ current isRoot ] whileFalse: [
+		level := level + 1.
+	current := current parent ].
+	^ level'.
+searcher := RBParseTreeSearcher new.
+searcher
+		matches: '`rec `selector: `@arg'
+		do: [ :aNode :answer | answer add: aNode ; yourself].
+searcher executeTree: methodNode initialAnswer: Set new.
+searcher answer.
+
+I was expecting to get 
+	 self resolve
+	whileFalse: 
+
+I know that without recurse I do not get recursion into matched top level node. 
+
+But now I only get level + 1.
+
+
+with '`rec `@selector: `@arg’
+
+I get 'an OrderedCollection(RBMessageNode(self resolve) RBMessageNode(current isRoot) RBMessageNode(level + 1) RBMessageNode(current parent))’
+
+while I would expect whileFalse: 
+
+I’m trying to explain it in a documentation but I found it really confusing. 
+
+
+
+S.
+
+	
+
+--------------------------------------------
+Stéphane Ducasse
+http://stephane.ducasse.free.fr / http://www.pharo.org 
+03 59 35 87 52
+Assistant: Julie Jonas 
+FAX 03 59 57 78 50
+TEL 03 59 35 86 16
+S. Ducasse - Inria
+40, avenue Halley, 
+Parc Scientifique de la Haute Borne, Bât.A, Park Plaza
+Villeneuve d'Ascq 59650
+France
