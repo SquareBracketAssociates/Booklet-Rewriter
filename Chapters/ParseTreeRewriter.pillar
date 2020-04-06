@@ -151,7 +151,7 @@ Several options can be used to specify the search:
 ||!keyword  |! Meaning
 || @ | the searched node is optional or can be repeated. 
 || | When applied to a variable, match any expression. When applied to a statement, match a list of statements. When applied to a message, match a list of arguments.
-|| . | the searched node is a statement in a sequence node.
+|| . | the searched node is a statement in a sequence node. 
 || # | the searched node is a literal
 || \{ \} | to match nodes that satisfies the enclosed code
 || ` | to search recursively: When a match is found recurse into the matched node.
@@ -443,6 +443,8 @@ rewrite: aCompiledMethod
 
 In this chapter we describe the DSL with many examples.
 
+single node (e.g., `@node)
+multiple nodes (e.g., `.@statements)
 
 !!! Single variables
 

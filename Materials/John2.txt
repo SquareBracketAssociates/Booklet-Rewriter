@@ -38,7 +38,38 @@ I’m trying to explain it in a documentation but I found it really confusing.
 
 S.
 
-	
+
+
+`rec matches a variable node and the receiver of #whileTrue: is a block so it doesn’t match. The `selector: in the first example only matches a single keyword message. In the RB, if you don’t add additional characters to the backquote, it assumes the smallest thing to match. So, "`var `msg” matches any unary message sent to any variable (including “self” but not “true” as that is a literal). 
+
+Here’s the basic rundown of the additional characters:
+
+# — matches literals: true, false, nil, #(),#printString, 3, ‘etc.'
+. — matches only statements — you could also specify an anything expression match, but if you want a list of statements, you need the period
+` — after a match is found, look into this matching node for more matches
+; — when part of the selector in a message send, makes the current message send into a cascade message
+@ — this one is somewhat tricky as it means a couple different things. When used for a normal node, it transforms the match into an anything match. For example, `@var can match variables, blocks, messages — basically any expression in a Smalltalk AST. When used with a statement “.”, it turns the single statement match into a list of statements (0 or more). When used on a temporary or block variable, turns the match into a list of variables (0 or more). When used on a selector part in a message send, turns into any message send. Finally, when used with the “;”, turns into 0 or more cascaded messages.
+
+Here’s some examples of the @ character:
+
+To match some sequence node that defines a “x” variable:
+	| `@vars1 x `@vars2 | 
+	`@.stmts
+
+To find a nextPut: message in a cascaded message:
+	`@a 
+		`@;before; 
+		nextPut: `@arg; 
+		`@;after
+
+To find a sequence node that contains a statement that is repeated someplace else in the node:
+	| `@temps | 
+	`@.Stmts1. 
+	`.Stmt. 
+	`@.Stmts2. 
+	`.Stmt.
+	 `@.Stmts3
+The `@.Stmts1/2/3 can match 0 or more statements, the `@temps can match 0 or more temps in the sequence node. The `.Stmt matches the statement, but you could also use `@Stmt since it is also a Smalltalk expression.
 
 --------------------------------------------
 Stéphane Ducasse
