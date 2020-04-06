@@ -1,7 +1,7 @@
 # Pharo Code Rewriter
 
 A little book to present a cool tool that is at the heart of the refactoring engine of Pharo: the tree rewriter. 
-It has been developed by J. Brant.
+It has been developed by J. Brant and D. Roberts.
 
 
 https://travis-ci.com/SquareBracketAssociates/Booklet-Rewriter
