@@ -1,0 +1,52 @@
+Hi,
+
+I was wondering if it was possible with the parse tree rewriter to match
+a block parameter?
+
+I would like to be able, for example, to rewrite:
+
+`#() detect: #odd ifFound: [ :e | e ] ifNone: [ self toto ]`
+
+as
+
+`#() detect: #odd ifNone: [ self toto ]`
+
+But I don't know how to express this rule with the rewrite rules of Pharo.
+
+I tried multiple things such as:
+
+'`@receiver detect: `@arg1 ifFound: [ `@arg2 | `@arg2 ] ifNone: `@arg3 '
+-> '`@receiver detect: `@arg1 ifNone: `@arg3'
+
+or
+
+'`@receiver detect: `@arg1 ifFound: [ :`@arg2 | `@arg2 ] ifNone: `@arg3
+' -> '`@receiver detect: `@arg1 ifNone: `@arg3'
+
+Without sucess.
+
+Is there a way to do that or is it a limitation of the rewrite syntax?
+
+-- 
+Cyril Ferlicot
+https://ferlicot.fr
+
+
+=============================================================================
+
+
+Cyril, something like this:
+
+| env rewriter result methods changes |
+env := RBBrowserEnvironment default forPackages: (RPackageOrganizer default packages ).
+
+rewriter := RBParseTreeRewriter new.
+rewriter   
+replace:'`@receiver detect: `@arg1 ifFound: [ :`arg2 | `arg2 ] ifNone: `@arg3' with: '`@receiver detect: `@arg1 ifNone: `@arg3'.
+
+changes := Array with: (RBSmalllintChecker runRule: (RBTransformationRule new 
+rewriteRule: rewriter;
+yourself)
+onEnvironment:  env  ) builder.
+
+ (ChangesBrowser changes: changes) open.
