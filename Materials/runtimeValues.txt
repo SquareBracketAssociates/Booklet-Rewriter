@@ -1,0 +1,17 @@
+For example, if I would deprecate a method:
+
+```Smalltalk
+	isEnabled: aBoolean
+		isEnabled:= aBoolean```
+
+I might want to have 3 cases:
+- The value is "true", then replace by `enabled`
+- The value us false, then replace by `disabled`
+- the value is an expression that need to be executed at runtime to find the boolean, replace by `expression ifFalse: [ self disabled ]` (if the default value is true)
+
+RBParseTreeRewriter new
+ replace: '`@receiver isEnable: true' with: '`@receiver enabled';
+ replace: '`@receiver isEnable: false' with: '`@receiver disabled';
+ replace: '`@receiver isEnable: `@arg' with: '`@arg ifTrue: [ `@receiver enabled ] ifFalse: [ `@receiver disabled ]';
+ yourself
+ 
