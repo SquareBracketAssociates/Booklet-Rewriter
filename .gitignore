@@ -5,7 +5,6 @@
 **/*.synctex.gz
 *.pdf
 **/*.blg
-_result/
 
 journal.pdf
 
